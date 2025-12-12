@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Taiwan Bus Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom Animations */
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="glass-panel sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 text-white p-2 rounded-lg">
+                <i class="fa-solid fa-bus"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight">Taiwan Bus</h1>
+                <p class="text-xs text-gray-500" id="status-indicator">● Demo Mode</p>
+            </div>
+        </div>
+        <button onclick="toggleSettings()" class="text-gray-500 hover:text-blue-600 p-2 rounded-full transition">
+            <i class="fa-solid fa-gear text-xl"></i>
+        </button>
+    </header>
+
+    <!-- Main Content Area -->
+    <main id="main-container" class="flex-1 overflow-y-auto relative hide-scrollbar p-4 pb-24">
+        
+        <!-- Hero / Empty State -->
+        <div id="hero-section" class="flex flex-col items-center justify-center h-full text-center space-y-6 animate-slide-in">
+            <div class="w-32 h-32 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 mb-4">
+                <i class="fa-solid fa-location-dot text-4xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800">Find Nearby Stops</h2>
+            <p class="text-gray-500 max-w-xs">
+                Use your location to see bus stops and real-time arrival estimates across Taiwan.
+            </p>
+            <button onclick="getLocation()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg transform transition active:scale-95 flex items-center gap-2">
+                <i class="fa-solid fa-location-arrow"></i>
+                <span>Locate Me</span>
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-section" class="hidden flex-col items-center justify-center h-full pt-20">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-gray-500 animate-pulse">Locating nearby stops...</p>
+        </div>
+
+        <!-- Stop List -->
+        <div id="stops-list-section" class="hidden space-y-4">
+            <div class="flex justify-between items-end mb-2">
+                <h3 class="text-lg font-bold text-gray-800">Nearby Stops</h3>
+                <button onclick="getLocation()" class="text-sm text-blue-600 font-medium">Refresh</button>
+            </div>
+            <div id="stops-container" class="space-y-3">
+                <!-- Stops will be injected here -->
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-section" class="hidden flex-col items-center justify-center h-full text-center pt-20 px-4">
+            <div class="text-red-500 text-5xl mb-4"><i class="fa-solid fa-circle-exclamation"></i></div>
+            <h3 class="text-xl font-bold mb-2">Oops!</h3>
+            <p id="error-message" class="text-gray-600 mb-6">Something went wrong.</p>
+            <button onclick="showHero()" class="text-blue-600 font-semibold">Try Again</button>
+        </div>
+
+    </main>
+
+    <!-- Detail Modal (Slide Up) -->
+    <div id="detail-modal" class="fixed inset-0 z-40 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeDetail()"></div>
+        <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl transform transition-transform duration-300 h-[85vh] flex flex-col">
+            <!-- Modal Handle -->
+            <div class="w-full flex justify-center pt-3 pb-1" onclick="closeDetail()">
+                <div class="w-12 h-1.5 bg-gray-300 rounded-full"></div>
+            </div>
+            
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b">
+                <h2 id="modal-stop-name" class="text-2xl font-bold text-gray-900 truncate">Stop Name</h2>
+                <p id="modal-stop-distance" class="text-sm text-gray-500">Distance</p>
+            </div>
+
+            <!-- Routes List -->
+            <div id="modal-routes-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                <!-- Routes injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black bg-opacity-60 backdrop-blur-sm" onclick="toggleSettings()"></div>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden animate-slide-in">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">Settings</h2>
+                    <button onclick="toggleSettings()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                        <p class="font-bold mb-1"><i class="fa-solid fa-circle-info mr-1"></i> Mode Info</p>
+                        <p>Default is <strong>Demo Mode</strong> (simulated data). For real data, enter your TDX API keys below.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Client ID</label>
+                        <input type="text" id="client-id" placeholder="TDX Client ID" class="w-full bg-gray-100 border-transparent focus:bg-white focus:border-blue-500 rounded-lg px-4 py-3 text-sm transition outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Client Secret</label>
+                        <input type="password" id="client-secret" placeholder="TDX Client Secret" class="w-full bg-gray-100 border-transparent focus:bg-white focus:border-blue-500 rounded-lg px-4 py-3 text-sm transition outline-none">
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-between items-center">
+                    <a href="https://tdx.transportdata.tw/" target="_blank" class="text-xs text-blue-500 underline">Get Keys (TDX)</a>
+                    <button onclick="saveSettings()" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold shadow hover:bg-blue-700 transition">
+                        Save & Reload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-sm px-6 py-3 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50">
+        Notification
+    </div>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            lat: null,
+            lon: null,
+            mode: 'demo', // 'demo' or 'live'
+            auth: {
+                clientId: localStorage.getItem('tdx_client_id') || '',
+                clientSecret: localStorage.getItem('tdx_client_secret') || '',
+                accessToken: null,
+                tokenExpiry: 0
+            },
+            currentStops: [],
+            selectedStop: null
+        };
+
+        // --- Init ---
+        function init() {
+            if (state.auth.clientId && state.auth.clientSecret) {
+                state.mode = 'live';
+                document.getElementById('status-indicator').innerHTML = '<span class="text-green-600">● Live Data</span>';
+                document.getElementById('client-id').value = state.auth.clientId;
+                document.getElementById('client-secret').value = state.auth.clientSecret;
+            } else {
+                document.getElementById('status-indicator').innerHTML = '<span class="text-orange-500">● Demo Mode</span>';
+            }
+        }
+
+        // --- UI Functions ---
+        function showLoading() {
+            document.getElementById('hero-section').classList.add('hidden');
+            document.getElementById('stops-list-section').classList.add('hidden');
+            document.getElementById('error-section').classList.add('hidden');
+            document.getElementById('loading-section').classList.remove('hidden');
+            document.getElementById('loading-section').classList.add('flex');
+        }
+
+        function showStopsList() {
+            document.getElementById('loading-section').classList.add('hidden');
+            document.getElementById('loading-section').classList.remove('flex');
+            document.getElementById('stops-list-section').classList.remove('hidden');
+        }
+
+        function showHero() {
+            document.getElementById('loading-section').classList.add('hidden');
+            document.getElementById('error-section').classList.add('hidden');
+            document.getElementById('stops-list-section').classList.add('hidden');
+            document.getElementById('hero-section').classList.remove('hidden');
+        }
+
+        function showError(msg) {
+            document.getElementById('loading-section').classList.add('hidden');
+            document.getElementById('stops-list-section').classList.add('hidden');
+            document.getElementById('error-section').classList.remove('hidden');
+            document.getElementById('error-section').classList.add('flex');
+            document.getElementById('error-message').textContent = msg;
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+        }
+
+        function toggleSettings() {
+            const el = document.getElementById('settings-modal');
+            el.classList.toggle('hidden');
+        }
+
+        function saveSettings() {
+            const id = document.getElementById('client-id').value.trim();
+            const secret = document.getElementById('client-secret').value.trim();
+            
+            if (id && secret) {
+                localStorage.setItem('tdx_client_id', id);
+                localStorage.setItem('tdx_client_secret', secret);
+                showToast('Settings Saved. Switching to Live Mode.');
+            } else {
+                localStorage.removeItem('tdx_client_id');
+                localStorage.removeItem('tdx_client_secret');
+                showToast('Credentials cleared. Switched to Demo Mode.');
+            }
+            
+            setTimeout(() => window.location.reload(), 1000);
+        }
+
+        // --- Geolocation ---
+        function getLocation() {
+            showLoading();
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        state.lat = position.coords.latitude;
+                        state.lon = position.coords.longitude;
+                        fetchStops();
+                    },
+                    (error) => {
+                        let msg = "Unable to retrieve your location.";
+                        if(error.code === 1) msg = "Location permission denied.";
+                        showError(msg);
+                    }
+                );
+            } else {
+                showError("Geolocation is not supported by this browser.");
+            }
+        }
+
+        // --- Data Logic ---
+
+        // MOCK DATA GENERATOR
+        function generateMockStops(lat, lon) {
+            const stops = [];
+            const names = ["Central Market", "City Hall", "Technology Park", "Main Station", "Memorial Park", "University Gate", "Hospital North"];
+            
+            for(let i=0; i<6; i++) {
+                stops.push({
+                    StationUID: `MOCK_${i}`,
+                    StationName: { Zh_tw: names[i] + " (Demo)", En: names[i] + " (Demo)" },
+                    StationPosition: { PositionLat: lat + (Math.random() * 0.005), PositionLon: lon + (Math.random() * 0.005) },
+                    Distance: Math.floor(Math.random() * 400) + 50,
+                    City: "Taipei" // Default for mock
+                });
+            }
+            return stops.sort((a,b) => a.Distance - b.Distance);
+        }
+
+        function generateMockRoutes() {
+            const routes = [];
+            const routeNames = ["299", "307", "Blue 5", "Red 2", "652", "Green 1"];
+            const statuses = [
+                { status: 0, text: "Arriving", color: "text-red-500 animate-pulse", bg: "bg-red-50" },
+                { status: 1, text: "2 min", color: "text-orange-500", bg: "bg-orange-50" },
+                { status: 1, text: "5 min", color: "text-green-600", bg: "bg-green-50" },
+                { status: 1, text: "12 min", color: "text-gray-600", bg: "bg-gray-100" }
+            ];
+
+            for(let i=0; i<4; i++) {
+                const r = routeNames[Math.floor(Math.random() * routeNames.length)];
+                const s = statuses[Math.floor(Math.random() * statuses.length)];
+                routes.push({
+                    RouteName: { Zh_tw: r, En: r },
+                    EstimateTime: s.text === "Arriving" ? 30 : parseInt(s.text) * 60,
+                    StatusText: s.text,
+                    ColorClass: s.color,
+                    BgClass: s.bg,
+                    Destination: "City Center"
+                });
+            }
+            return routes;
+        }
+
+        // TDX API SERVICE
+        async function getTdxToken() {
+            // Check if valid token exists
+            if (state.auth.accessToken && Date.now() < state.auth.tokenExpiry) {
+                return state.auth.accessToken;
+            }
+
+            const params = new URLSearchParams();
+            params.append('grant_type', 'client_credentials');
+            params.append('client_id', state.auth.clientId);
+            params.append('client_secret', state.auth.clientSecret);
+
+            try {
+                const res = await fetch('https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: params
+                });
+                
+                if (!res.ok) throw new Error('Auth Failed');
+                
+                const data = await res.json();
+                state.auth.accessToken = data.access_token;
+                state.auth.tokenExpiry = Date.now() + (data.expires_in * 1000) - 30000; // Buffer
+                return data.access_token;
+            } catch (e) {
+                console.error(e);
+                throw new Error("Could not authenticate with TDX. Check keys.");
+            }
+        }
+
+        async function fetchStops() {
+            try {
+                let stops = [];
+                if (state.mode === 'live') {
+                    const token = await getTdxToken();
+                    
+                    // Fetch nearby stations
+                    // Radius: 500m
+                    const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/Station/NearBy?%24top=20&%24spatialFilter=nearby(${state.lat}%2C${state.lon}%2C500)&%24format=JSON`;
+                    
+                    const res = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    if(!res.ok) throw new Error("Failed to fetch stops");
+                    const data = await res.json();
+                    
+                    stops = data.map(s => {
+                        // Calculate distance roughly (simple haversine not needed for sorting if API handles it, but API returns unsorted sometimes)
+                        // But TDX nearby usually sorts by distance or we can calculate.
+                        // We will just trust the order or calculate simple Euclidean for display
+                        const dist = getDistanceFromLatLonInKm(state.lat, state.lon, s.StationPosition.PositionLat, s.StationPosition.PositionLon);
+                        return {
+                            ...s,
+                            Distance: Math.round(dist * 1000),
+                            City: s.LocationCityCode // e.g. TPE
+                        };
+                    }).sort((a,b) => a.Distance - b.Distance);
+
+                } else {
+                    // DEMO MODE
+                    await new Promise(r => setTimeout(r, 800)); // Fake delay
+                    stops = generateMockStops(state.lat, state.lon);
+                }
+
+                state.currentStops = stops;
+                renderStops();
+                showStopsList();
+
+            } catch (e) {
+                console.error(e);
+                showError(e.message || "Failed to load data.");
+            }
+        }
+
+        async function fetchArrivals(station) {
+            // Render loading state in modal
+            const container = document.getElementById('modal-routes-container');
+            container.innerHTML = '<div class="flex justify-center p-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>';
+
+            try {
+                let routesData = [];
+
+                if (state.mode === 'live') {
+                    const token = await getTdxToken();
+                    // NOTE: TDX doesn't have a simple "Get Arrivals by StationID" that covers ALL cities easily without knowing the city code in URL usually.
+                    // However, we saved City in the stop object.
+                    // We need to fetch EstimatedTimeOfArrival for the specific city and filter by StationID.
+                    // Note: StationID in V2 is tricky. Often we need to filter by 'StopUID' but a Station has multiple Stops.
+                    // Let's try to find Stops within the Station object.
+                    
+                    // The station object has "Stops" array usually.
+                    let city = station.City || 'Taipei'; // Default fallback
+                    // Map City Code to City Name for URL if needed (e.g. TPE -> Taipei)
+                    // Simplified map for major cities:
+                    const cityMap = {
+                        'TPE': 'Taipei', 'NWT': 'NewTaipei', 'KEE': 'Keelung', 'TAO': 'Taoyuan', 
+                        'HSZ': 'Hsinchu', 'TXG': 'Taichung', 'CYI': 'Chiayi', 'TNN': 'Tainan', 
+                        'KHH': 'Kaohsiung', 'ILA': 'YilanCounty', 'HUA': 'HualienCounty', 'TTT': 'TaitungCounty'
+                        // Add others as needed, defaulting to generic query might fail
+                    };
+                    
+                    // If we don't know the city string, TDX V2 requires it in path.
+                    // Workaround: Use the StationID to filter if possible, but path requires City.
+                    // If we are in demo, it works. In Live, this is the complexity.
+                    // We will try to guess from the mocked "LocationCityCode" or just use the Station data stops.
+
+                    // Attempt: Iterate over the Stops inside the Station and get their estimates.
+                    // Actually, let's just use the `Stops` array from the Station data we already have to show routes,
+                    // and then fetch estimates if possible.
+                    
+                    // If the API didn't return Stops inside Station, we might have to fetch separate.
+                    // Let's assume we can fetch estimates for the City.
+                    
+                    // Simple approach for this demo to be robust:
+                    // If we have stops, we query estimates for those RouteUIDs.
+                    
+                    // Construct a filter for the API
+                    // $filter=StopUID eq 'X' or StopUID eq 'Y' ...
+                    
+                    if (station.Stops && station.Stops.length > 0 && cityMap[city]) {
+                        const stopIds = station.Stops.map(s => s.StopUID);
+                        const filter = stopIds.map(id => `StopUID eq '${id}'`).join(' or ');
+                        const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/${cityMap[city]}?%24filter=${encodeURIComponent(filter)}&%24format=JSON`;
+                        
+                        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                        const estimates = await res.json();
+                        
+                        // Merge estimates
+                        routesData = estimates.map(e => {
+                            let statusText = "Unknown";
+                            let color = "text-gray-600";
+                            let bg = "bg-gray-100";
+                            
+                            if (e.EstimateTime !== undefined) {
+                                const min = Math.floor(e.EstimateTime / 60);
+                                if (min < 1) { statusText = "Arriving"; color = "text-red-500 animate-pulse"; bg = "bg-red-50"; }
+                                else if (min < 3) { statusText = `${min} min`; color = "text-orange-500"; bg = "bg-orange-50"; }
+                                else { statusText = `${min} min`; color = "text-green-600"; bg = "bg-green-50"; }
+                            } else {
+                                // Status codes: 0:Normal, 1:Not started, 2:Maintenance, 3:Traffic jam, 4:End of service
+                                if (e.StopStatus === 4) { statusText = "End of Service"; }
+                                else { statusText = "Waiting"; }
+                            }
+
+                            return {
+                                RouteName: e.RouteName,
+                                Destination: `Dir: ${e.Direction === 0 ? 'Outbound' : 'Inbound'}`, // Simplified
+                                StatusText: statusText,
+                                ColorClass: color,
+                                BgClass: bg
+                            };
+                        });
+                        
+                        // Sort by arrival time (approx based on text)
+                        routesData.sort((a,b) => {
+                            if(a.StatusText === 'Arriving') return -1;
+                            if(b.StatusText === 'Arriving') return 1;
+                            return 0;
+                        });
+                    } else {
+                        // If no sub-stops or city unknown, just show static info from Station
+                         routesData = [{ RouteName: {En: "No Real-time Data"}, StatusText: "-", ColorClass: "", BgClass: "", Destination: "Check official app" }];
+                    }
+
+                } else {
+                    // DEMO MODE
+                    await new Promise(r => setTimeout(r, 600));
+                    routesData = generateMockRoutes();
+                }
+
+                renderRoutes(routesData);
+
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<div class="text-center text-gray-500 py-8">Could not load arrival times.<br><span class="text-xs">${e.message}</span></div>`;
+            }
+        }
+
+
+        // --- Render Functions ---
+        function renderStops() {
+            const container = document.getElementById('stops-container');
+            container.innerHTML = '';
+
+            if (state.currentStops.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-10">No stops found nearby.</div>';
+                return;
+            }
+
+            state.currentStops.forEach((stop, index) => {
+                const div = document.createElement('div');
+                div.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:bg-blue-50 transition active:scale-[0.98]';
+                div.onclick = () => openDetail(index);
+                
+                const name = stop.StationName.Zh_tw || stop.StationName.En;
+                
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="bg-gray-100 p-2 rounded-full text-blue-500">
+                            <i class="fa-solid fa-map-pin"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-800">${name}</h4>
+                            <p class="text-xs text-gray-500">${stop.City || 'Taiwan'} • ${stop.Distance}m away</p>
+                        </div>
+                    </div>
+                    <div class="text-gray-300">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderRoutes(routes) {
+            const container = document.getElementById('modal-routes-container');
+            container.innerHTML = '';
+
+            if (routes.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-10">No active buses found.</div>';
+                return;
+            }
+
+            routes.forEach(route => {
+                const name = route.RouteName.Zh_tw || route.RouteName.En;
+                
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100';
+                
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 flex items-center justify-center bg-blue-600 text-white font-bold rounded-lg text-sm">
+                            ${name}
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-400 uppercase tracking-wide">To ${route.Destination || 'Terminus'}</p>
+                            <p class="text-sm font-medium text-gray-800">Bus No. ${name}</p>
+                        </div>
+                    </div>
+                    <div class="${route.BgClass} ${route.ColorClass} px-3 py-1 rounded-full text-sm font-bold min-w-[80px] text-center">
+                        ${route.StatusText}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // --- Helper: Distance ---
+        function getDistanceFromLatLonInKm(lat1,lon1,lat2,lon2) {
+            var R = 6371; // Radius of the earth in km
+            var dLat = deg2rad(lat2-lat1);  
+            var dLon = deg2rad(lon2-lon1); 
+            var a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            var d = R * c; // Distance in km
+            return d;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI/180)
+        }
+
+        // --- Interaction ---
+        function openDetail(index) {
+            const stop = state.currentStops[index];
+            state.selectedStop = stop;
+            
+            document.getElementById('modal-stop-name').textContent = stop.StationName.Zh_tw || stop.StationName.En;
+            document.getElementById('modal-stop-distance').textContent = `${stop.Distance}m away`;
+            
+            const modal = document.getElementById('detail-modal');
+            modal.classList.remove('hidden');
+            
+            // Slide up animation
+            const content = modal.querySelector('div[class*="absolute bottom-0"]');
+            content.classList.add('translate-y-full');
+            setTimeout(() => content.classList.remove('translate-y-full'), 10);
+
+            fetchArrivals(stop);
+        }
+
+        function closeDetail() {
+            const modal = document.getElementById('detail-modal');
+            const content = modal.querySelector('div[class*="absolute bottom-0"]');
+            
+            content.classList.add('translate-y-full');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        // Initialize
+        init();
+
+    </script>
+</body>
+</html>
