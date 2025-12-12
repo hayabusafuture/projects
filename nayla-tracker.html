@@ -12,6 +12,19 @@
         .timeline-dot { position: absolute; left: 10px; top: 0; width: 20px; height: 20px; border-radius: 50%; background-color: #6366f1; border: 4px solid #f8fafc; }
         .vaccine-card { transition: all 0.2s; }
         .vaccine-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border-color: #c7d2fe; }
+        
+        /* Modal Styles */
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
+        dialog[open] {
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
     </style>
 </head>
 <body class="text-slate-800 pb-12">
@@ -141,6 +154,33 @@
 
     </main>
 
+    <!-- Wikipedia Modal -->
+    <dialog id="wiki-dialog" class="w-full max-w-lg rounded-2xl shadow-2xl p-0 backdrop:bg-gray-900/50">
+        <div class="bg-white flex flex-col max-h-[85vh]">
+            <!-- Header -->
+            <div class="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+                <h3 id="wiki-title" class="font-bold text-lg text-slate-800">Loading...</h3>
+                <button onclick="closeWiki()" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div id="wiki-content" class="p-5 overflow-y-auto">
+                <div class="flex justify-center py-8">
+                    <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 text-2xl"></i>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 border-t border-slate-100 flex justify-end">
+                <a id="wiki-external-link" href="#" target="_blank" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">
+                    Read full article on Wikipedia <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i>
+                </a>
+            </div>
+        </div>
+    </dialog>
+
     <script>
         // --- Configuration ---
         const BIRTH_DATE = '2025-11-11';
@@ -169,38 +209,199 @@
             24: { w: [9.0, 14.8], h: [80.0, 92.9] },
         };
 
-        // --- Data: Vaccines ---
+        // --- Data: Vaccines (Verified) ---
+        // Wiki keys used for API fetch
         const rawVaccines = [
-            { id: 'bcg', month: 0, type: 'Respiratory', name: { en: "BCG", zh: "卡介苗" }, desc: { en: "Tuberculosis protection.", zh: "預防結核病。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'hepb-1', month: 0, type: 'Hepatic', name: { en: "Hepatitis B (Dose 1)", zh: "B型肝炎 (第1劑)" }, desc: { en: "Within 24hr of birth.", zh: "出生24小時內接種。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'hepb-2-tw', month: 1, type: 'Hepatic', name: { en: "Hepatitis B (Dose 2)", zh: "B型肝炎 (第2劑)" }, desc: { en: "Standard TW schedule.", zh: "台灣常規時程。" }, status: { TW: 'M', SG: 'N' } },
-            { id: '6in1-1', month: 2, type: 'Combination', name: { en: "6-in-1 (DTaP-IPV-Hib-HepB) (D1)", zh: "六合一疫苗 (第1劑)" }, desc: { en: "Diphtheria, Tetanus, Pertussis, Polio, Hib, HepB.", zh: "白喉、破傷風、百日咳、小兒麻痺、B型嗜血桿菌、B肝。" }, status: { TW: 'N', SG: 'M' } },
-            { id: '5in1-1', month: 2, type: 'Combination', name: { en: "5-in-1 (DTaP-IPV-Hib) (D1)", zh: "五合一疫苗 (第1劑)" }, desc: { en: "Standard TW schedule (No HepB).", zh: "台灣常規 (不含B肝)。" }, status: { TW: 'M', SG: 'N' } },
-            { id: 'pcv-1', month: 2, type: 'Respiratory', name: { en: "Pneumococcal (PCV13/15) (D1)", zh: "13/15價結合型肺炎鏈球菌 (第1劑)" }, desc: { en: "Pneumonia/Meningitis.", zh: "預防肺炎及腦膜炎。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'rota-1', month: 2, type: 'Gastrointestinal', name: { en: "Rotavirus (Dose 1)", zh: "輪狀病毒 (第1劑)" }, desc: { en: "Oral vaccine.", zh: "口服疫苗。" }, status: { TW: 'O', SG: 'O' } },
-            { id: '6in1-2', month: 4, type: 'Combination', name: { en: "6-in-1 (D2)", zh: "六合一疫苗 (第2劑)" }, desc: { en: "SG Schedule.", zh: "新加坡時程。" }, status: { TW: 'N', SG: 'M' } },
-            { id: '5in1-2', month: 4, type: 'Combination', name: { en: "5-in-1 (D2)", zh: "五合一疫苗 (第2劑)" }, desc: { en: "TW Schedule.", zh: "台灣時程。" }, status: { TW: 'M', SG: 'N' } },
-            { id: 'pcv-2', month: 4, type: 'Respiratory', name: { en: "Pneumococcal (PCV13/15) (D2)", zh: "肺炎鏈球菌 (第2劑)" }, desc: { en: "Second dose.", zh: "第二劑。" }, status: { TW: 'M', SG: 'M' } },
-            { id: '6in1-3', month: 6, type: 'Combination', name: { en: "6-in-1 (D3)", zh: "六合一疫苗 (第3劑)" }, desc: { en: "SG Schedule.", zh: "新加坡時程。" }, status: { TW: 'N', SG: 'M' } },
-            { id: '5in1-3', month: 6, type: 'Combination', name: { en: "5-in-1 (D3)", zh: "五合一疫苗 (第3劑)" }, desc: { en: "TW Schedule.", zh: "台灣時程。" }, status: { TW: 'M', SG: 'N' } },
-            { id: 'hepb-3-tw', month: 6, type: 'Hepatic', name: { en: "Hepatitis B (Dose 3)", zh: "B型肝炎 (第3劑)" }, desc: { en: "TW Schedule final primary dose.", zh: "台灣時程基礎劑最後一劑。" }, status: { TW: 'M', SG: 'N' } },
-            { id: 'flu', month: 6, type: 'Respiratory', name: { en: "Influenza (Annual)", zh: "流感疫苗 (每年)" }, desc: { en: "Recommended annually from 6m.", zh: "滿6個月後每年接種。" }, status: { TW: 'O', SG: 'O' } },
-            { id: 'mmr-1', month: 12, type: 'MMRV', name: { en: "MMR (Measles, Mumps, Rubella) (D1)", zh: "麻疹腮腺炎德國麻疹 (第1劑)" }, desc: { en: "First dose.", zh: "第一劑。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'var-1', month: 12, type: 'MMRV', name: { en: "Varicella (Chickenpox) (D1)", zh: "水痘疫苗 (第1劑)" }, desc: { en: "First dose.", zh: "第一劑。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'pcv-3', month: 12, type: 'Respiratory', name: { en: "Pneumococcal (Booster)", zh: "肺炎鏈球菌 (追加劑)" }, desc: { en: "Final toddler dose.", zh: "幼兒最後一劑。" }, status: { TW: 'M', SG: 'M' } },
-            { id: 'hepa-1', month: 12, type: 'Hepatic', name: { en: "Hepatitis A (Dose 1)", zh: "A型肝炎 (第1劑)" }, desc: { en: "Prevents food-borne liver virus.", zh: "預防飲食傳染的A肝病毒。" }, status: { TW: 'M', SG: 'O' } },
-            { id: 'je-1', month: 15, type: 'Other', name: { en: "Japanese Encephalitis (D1)", zh: "日本腦炎 (第1劑)" }, desc: { en: "Mosquito-borne. Live attenuated.", zh: "活性減毒疫苗。" }, status: { TW: 'M', SG: 'O' } },
-            { id: 'mmr-2-sg', month: 15, type: 'MMRV', name: { en: "MMR (Dose 2)", zh: "麻疹腮腺炎德國麻疹 (第2劑)" }, desc: { en: "SG Schedule (TW gives at 5yo).", zh: "新加坡時程 (台灣於小學前接種)。" }, status: { TW: 'N', SG: 'M' } },
-            { id: 'var-2-sg', month: 15, type: 'MMRV', name: { en: "Varicella (Dose 2)", zh: "水痘疫苗 (第2劑)" }, desc: { en: "SG Schedule (TW 2nd dose optional).", zh: "新加坡時程 (台灣第二劑選修)。" }, status: { TW: 'O', SG: 'M' } },
-            { id: '5in1-booster-sg', month: 15, type: 'Combination', name: { en: "5-in-1 Booster", zh: "五合一 (追加劑)" }, desc: { en: "SG Schedule booster.", zh: "新加坡追加劑。" }, status: { TW: 'N', SG: 'M' } },
-            { id: '5in1-booster-tw', month: 18, type: 'Combination', name: { en: "5-in-1 (D4)", zh: "五合一 (第4劑)" }, desc: { en: "TW Schedule booster.", zh: "台灣時程追加劑。" }, status: { TW: 'M', SG: 'N' } },
-            { id: 'hepa-2', month: 18, type: 'Hepatic', name: { en: "Hepatitis A (Dose 2)", zh: "A型肝炎 (第2劑)" }, desc: { en: "6 months after 1st dose.", zh: "與第一劑間隔6個月。" }, status: { TW: 'M', SG: 'O' } }
+            // Month 0
+            { 
+                id: 'bcg-sg', month: 0, type: 'Respiratory', 
+                name: { en: "BCG", zh: "卡介苗" }, 
+                desc: { en: "Tuberculosis protection (SG Schedule).", zh: "預防結核病 (新加坡時程)。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "BCG_vaccine", zh: "卡介苗" }
+            },
+            { 
+                id: 'hepb-1', month: 0, type: 'Hepatic', 
+                name: { en: "Hepatitis B (Dose 1)", zh: "B型肝炎 (第1劑)" }, 
+                desc: { en: "Within 24hr of birth.", zh: "出生24小時內接種。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "Hepatitis_B_vaccine", zh: "B型肝炎疫苗" }
+            },
+            // Month 1
+            { 
+                id: 'hepb-2-tw', month: 1, type: 'Hepatic', 
+                name: { en: "Hepatitis B (Dose 2)", zh: "B型肝炎 (第2劑)" }, 
+                desc: { en: "Standard TW schedule.", zh: "台灣常規時程。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Hepatitis_B_vaccine", zh: "B型肝炎疫苗" }
+            },
+            // Month 2
+            { 
+                id: '6in1-1', month: 2, type: 'Combination', 
+                name: { en: "6-in-1 (DTaP-IPV-Hib-HepB) (D1)", zh: "六合一疫苗 (第1劑)" }, 
+                desc: { en: "Diphtheria, Tetanus, Pertussis, Polio, Hib, HepB.", zh: "白喉、破傷風、百日咳、小兒麻痺、B型嗜血桿菌、B肝。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "Hexavalent_vaccine", zh: "六合一疫苗" }
+            },
+            { 
+                id: '5in1-1', month: 2, type: 'Combination', 
+                name: { en: "5-in-1 (DTaP-IPV-Hib) (D1)", zh: "五合一疫苗 (第1劑)" }, 
+                desc: { en: "Standard TW schedule (No HepB).", zh: "台灣常規 (不含B肝)。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Pentavalent_vaccine", zh: "五合一疫苗" }
+            },
+            { 
+                id: 'pcv-1', month: 2, type: 'Respiratory', 
+                name: { en: "Pneumococcal (PCV13/15) (D1)", zh: "13/15價結合型肺炎鏈球菌 (第1劑)" }, 
+                desc: { en: "Pneumonia/Meningitis.", zh: "預防肺炎及腦膜炎。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "Pneumococcal_conjugate_vaccine", zh: "肺炎鏈球菌疫苗" }
+            },
+            { 
+                id: 'rota-1', month: 2, type: 'Gastrointestinal', 
+                name: { en: "Rotavirus (Dose 1)", zh: "輪狀病毒 (第1劑)" }, 
+                desc: { en: "Oral vaccine.", zh: "口服疫苗。" }, 
+                status: { TW: 'O', SG: 'O' },
+                wiki: { en: "Rotavirus_vaccine", zh: "輪狀病毒疫苗" }
+            },
+            // Month 4
+            { 
+                id: '6in1-2', month: 4, type: 'Combination', 
+                name: { en: "6-in-1 (D2)", zh: "六合一疫苗 (第2劑)" }, 
+                desc: { en: "SG Schedule.", zh: "新加坡時程。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "Hexavalent_vaccine", zh: "六合一疫苗" }
+            },
+            { 
+                id: '5in1-2', month: 4, type: 'Combination', 
+                name: { en: "5-in-1 (D2)", zh: "五合一疫苗 (第2劑)" }, 
+                desc: { en: "TW Schedule.", zh: "台灣時程。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Pentavalent_vaccine", zh: "五合一疫苗" }
+            },
+            { 
+                id: 'pcv-2', month: 4, type: 'Respiratory', 
+                name: { en: "Pneumococcal (PCV13/15) (D2)", zh: "肺炎鏈球菌 (第2劑)" }, 
+                desc: { en: "Second dose.", zh: "第二劑。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "Pneumococcal_conjugate_vaccine", zh: "肺炎鏈球菌疫苗" }
+            },
+            // Month 5
+            { 
+                id: 'bcg-tw', month: 5, type: 'Respiratory', 
+                name: { en: "BCG", zh: "卡介苗" }, 
+                desc: { en: "Tuberculosis protection (TW: 5-8 months).", zh: "預防結核病 (台灣建議5-8個月接種)。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "BCG_vaccine", zh: "卡介苗" }
+            },
+            // Month 6
+            { 
+                id: '6in1-3', month: 6, type: 'Combination', 
+                name: { en: "6-in-1 (D3)", zh: "六合一疫苗 (第3劑)" }, 
+                desc: { en: "SG Schedule.", zh: "新加坡時程。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "Hexavalent_vaccine", zh: "六合一疫苗" }
+            },
+            { 
+                id: '5in1-3', month: 6, type: 'Combination', 
+                name: { en: "5-in-1 (D3)", zh: "五合一疫苗 (第3劑)" }, 
+                desc: { en: "TW Schedule.", zh: "台灣時程。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Pentavalent_vaccine", zh: "五合一疫苗" }
+            },
+            { 
+                id: 'hepb-3-tw', month: 6, type: 'Hepatic', 
+                name: { en: "Hepatitis B (Dose 3)", zh: "B型肝炎 (第3劑)" }, 
+                desc: { en: "TW Schedule final primary dose.", zh: "台灣時程基礎劑最後一劑。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Hepatitis_B_vaccine", zh: "B型肝炎疫苗" }
+            },
+            { 
+                id: 'flu', month: 6, type: 'Respiratory', 
+                name: { en: "Influenza (Annual)", zh: "流感疫苗 (每年)" }, 
+                desc: { en: "Recommended annually from 6m.", zh: "滿6個月後每年接種。" }, 
+                status: { TW: 'O', SG: 'O' },
+                wiki: { en: "Influenza_vaccine", zh: "流感疫苗" }
+            },
+            // Month 12
+            { 
+                id: 'mmr-1', month: 12, type: 'MMRV', 
+                name: { en: "MMR (Measles, Mumps, Rubella) (D1)", zh: "麻疹腮腺炎德國麻疹 (第1劑)" }, 
+                desc: { en: "First dose.", zh: "第一劑。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "MMR_vaccine", zh: "MMR疫苗" }
+            },
+            { 
+                id: 'var-1', month: 12, type: 'MMRV', 
+                name: { en: "Varicella (Chickenpox) (D1)", zh: "水痘疫苗 (第1劑)" }, 
+                desc: { en: "First dose.", zh: "第一劑。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "Varicella_vaccine", zh: "水痘疫苗" }
+            },
+            { 
+                id: 'pcv-3', month: 12, type: 'Respiratory', 
+                name: { en: "Pneumococcal (Booster)", zh: "肺炎鏈球菌 (追加劑)" }, 
+                desc: { en: "Final toddler dose.", zh: "幼兒最後一劑。" }, 
+                status: { TW: 'M', SG: 'M' },
+                wiki: { en: "Pneumococcal_conjugate_vaccine", zh: "肺炎鏈球菌疫苗" }
+            },
+            { 
+                id: 'hepa-1', month: 12, type: 'Hepatic', 
+                name: { en: "Hepatitis A (Dose 1)", zh: "A型肝炎 (第1劑)" }, 
+                desc: { en: "Prevents food-borne liver virus.", zh: "預防飲食傳染的A肝病毒。" }, 
+                status: { TW: 'M', SG: 'O' },
+                wiki: { en: "Hepatitis_A_vaccine", zh: "A型肝炎疫苗" }
+            },
+            // Month 15
+            { 
+                id: 'je-1', month: 15, type: 'Other', 
+                name: { en: "Japanese Encephalitis (D1)", zh: "日本腦炎 (第1劑)" }, 
+                desc: { en: "Mosquito-borne. Live attenuated.", zh: "活性減毒疫苗。" }, 
+                status: { TW: 'M', SG: 'O' },
+                wiki: { en: "Japanese_encephalitis_vaccine", zh: "日本腦炎疫苗" }
+            },
+            { 
+                id: 'mmr-2-sg', month: 15, type: 'MMRV', 
+                name: { en: "MMR (Dose 2)", zh: "麻疹腮腺炎德國麻疹 (第2劑)" }, 
+                desc: { en: "SG Schedule (TW gives at 5yo).", zh: "新加坡時程 (台灣於小學前接種)。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "MMR_vaccine", zh: "MMR疫苗" }
+            },
+            { 
+                id: 'var-2-sg', month: 15, type: 'MMRV', 
+                name: { en: "Varicella (Dose 2)", zh: "水痘疫苗 (第2劑)" }, 
+                desc: { en: "SG Schedule (TW 2nd dose optional).", zh: "新加坡時程 (台灣第二劑選修)。" }, 
+                status: { TW: 'O', SG: 'M' },
+                wiki: { en: "Varicella_vaccine", zh: "水痘疫苗" }
+            },
+            { 
+                id: '5in1-booster-sg', month: 15, type: 'Combination', 
+                name: { en: "5-in-1 Booster", zh: "五合一 (追加劑)" }, 
+                desc: { en: "SG Schedule booster.", zh: "新加坡追加劑。" }, 
+                status: { TW: 'N', SG: 'M' },
+                wiki: { en: "Pentavalent_vaccine", zh: "五合一疫苗" }
+            },
+            // Month 18
+            { 
+                id: '5in1-booster-tw', month: 18, type: 'Combination', 
+                name: { en: "5-in-1 (D4)", zh: "五合一 (第4劑)" }, 
+                desc: { en: "TW Schedule booster.", zh: "台灣時程追加劑。" }, 
+                status: { TW: 'M', SG: 'N' },
+                wiki: { en: "Pentavalent_vaccine", zh: "五合一疫苗" }
+            },
+            { 
+                id: 'hepa-2', month: 18, type: 'Hepatic', 
+                name: { en: "Hepatitis A (Dose 2)", zh: "A型肝炎 (第2劑)" }, 
+                desc: { en: "6 months after 1st dose.", zh: "與第一劑間隔6個月。" }, 
+                status: { TW: 'M', SG: 'O' },
+                wiki: { en: "Hepatitis_A_vaccine", zh: "A型肝炎疫苗" }
+            }
         ];
 
         // --- Translations ---
         const translations = {
             en: {
-                title: "Baby's Vaccine Plan",
+                title: "Nayla's Vaccine Plan",
                 born: "Born:",
                 region: "Region",
                 regionAll: "Compare (TW & SG)",
@@ -223,6 +424,9 @@
                 over: "Above Range",
                 rangeInfoPart1: "Normal range is 3rd - 97th percentile for a",
                 rangeInfoPart2: "month old girl",
+                learnMore: "Learn More",
+                wikiError: "Could not load Wikipedia summary.",
+                readFull: "Read full article on Wikipedia",
                 types: {
                     Respiratory: "Respiratory (Lungs)",
                     Hepatic: "Hepatic (Liver)",
@@ -256,6 +460,9 @@
                 over: "高於標準",
                 rangeInfoPart1: "正常範圍為第3至97百分位，適用於",
                 rangeInfoPart2: "個月大的女寶寶",
+                learnMore: "了解更多",
+                wikiError: "無法載入維基百科摘要。",
+                readFull: "閱讀維基百科全文",
                 types: {
                     Respiratory: "呼吸道 (肺部)",
                     Hepatic: "肝臟防護 (B肝/A肝)",
@@ -300,7 +507,7 @@
         function toggleLang() {
             state.lang = state.lang === 'en' ? 'zh' : 'en';
             renderApp();
-            updateGrowth(); // Re-render growth text
+            updateGrowth();
         }
 
         function calculateDate(months) {
@@ -310,6 +517,68 @@
                 year: 'numeric', month: 'short', day: 'numeric'
             });
         }
+
+        // --- Wiki Functions ---
+        async function openWiki(wikiKey) {
+            const dialog = document.getElementById('wiki-dialog');
+            const titleEl = document.getElementById('wiki-title');
+            const contentEl = document.getElementById('wiki-content');
+            const linkEl = document.getElementById('wiki-external-link');
+            const t = translations[state.lang];
+
+            // Reset UI
+            titleEl.textContent = t.learnMore;
+            contentEl.innerHTML = `<div class="flex justify-center py-8"><i class="fa-solid fa-circle-notch fa-spin text-indigo-500 text-2xl"></i></div>`;
+            dialog.showModal();
+
+            // Determine API URL
+            // Wikipedia API: https://en.wikipedia.org/api/rest_v1/page/summary/{title}
+            const langCode = state.lang === 'zh' ? 'zh' : 'en';
+            const pageTitle = wikiKey; // Assuming wikiKey is the correct slug
+            const apiUrl = `https://${langCode}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
+            const wikiUrl = `https://${langCode}.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}`;
+
+            linkEl.href = wikiUrl;
+            linkEl.innerHTML = `${t.readFull} <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i>`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error('Wiki fetch failed');
+                const data = await response.json();
+
+                // Build Content
+                let html = '';
+                if (data.thumbnail && data.thumbnail.source) {
+                    html += `<img src="${data.thumbnail.source}" class="w-full h-48 object-cover rounded-lg mb-4 shadow-sm" alt="${data.title}">`;
+                }
+                html += `<h4 class="text-xl font-bold mb-2 text-slate-900">${data.title}</h4>`;
+                html += `<p class="text-slate-600 leading-relaxed">${data.extract_html || data.extract}</p>`;
+                
+                contentEl.innerHTML = html;
+                titleEl.textContent = data.title;
+
+            } catch (error) {
+                console.error(error);
+                contentEl.innerHTML = `<p class="text-center text-red-500 py-4"><i class="fa-solid fa-triangle-exclamation mr-2"></i> ${t.wikiError}</p>`;
+            }
+        }
+
+        function closeWiki() {
+            document.getElementById('wiki-dialog').close();
+        }
+
+        // Close on click outside
+        document.getElementById('wiki-dialog').addEventListener('click', (e) => {
+            const dialogDimensions = e.target.getBoundingClientRect();
+            if (
+                e.clientX < dialogDimensions.left ||
+                e.clientX > dialogDimensions.right ||
+                e.clientY < dialogDimensions.top ||
+                e.clientY > dialogDimensions.bottom
+            ) {
+                e.target.close();
+            }
+        });
 
         function getGrowthStandard() {
             const availableMonths = Object.keys(whoGirlsStandards).map(Number);
@@ -325,14 +594,11 @@
             const standard = getGrowthStandard();
             const t = translations[state.lang];
 
-            // Update Info Text
             document.getElementById('growth-info').innerHTML = `${t.rangeInfoPart1} <strong>${state.currentAgeMonths} ${t.rangeInfoPart2}</strong>`;
             
-            // Ranges
             document.getElementById('weight-range').textContent = `${standard.w[0]} - ${standard.w[1]} kg`;
             document.getElementById('height-range').textContent = `${standard.h[0]} - ${standard.h[1]} cm`;
 
-            // Helper for badge
             const renderBadge = (val, range, id) => {
                 const el = document.getElementById(id);
                 if (!val) {
@@ -358,7 +624,6 @@
         function renderApp() {
             const t = translations[state.lang];
             
-            // Update Static Text
             document.getElementById('nav-title').innerText = t.title;
             document.getElementById('nav-subtitle').innerText = `${t.born} ${BIRTH_DATE}`;
             document.getElementById('lang-btn-text').innerText = t.toggleLang;
@@ -375,7 +640,7 @@
 
             document.getElementById('label-type').innerText = t.type;
             document.getElementById('opt-type-all').innerText = t.typeAll;
-            // Update type options
+            
             const typeSelect = document.getElementById('filter-type');
             Array.from(typeSelect.options).forEach(opt => {
                 if (opt.value !== 'all' && t.types[opt.value]) {
@@ -385,27 +650,22 @@
 
             document.getElementById('label-optional').innerText = t.showOptional;
 
-            // Get Filter Values
             const filterCountry = document.getElementById('filter-country').value;
             const filterType = document.getElementById('filter-type').value;
             const showOptional = document.getElementById('filter-optional').checked;
 
-            // Filter Logic
             const filtered = rawVaccines.filter(v => {
                 const statusTW = v.status.TW;
                 const statusSG = v.status.SG;
 
-                // Country
                 let isRelevant = false;
                 if (filterCountry === 'all') isRelevant = (statusTW !== 'N') || (statusSG !== 'N');
                 else if (filterCountry === 'TW') isRelevant = statusTW !== 'N';
                 else if (filterCountry === 'SG') isRelevant = statusSG !== 'N';
                 if (!isRelevant) return false;
 
-                // Type
                 if (filterType !== 'all' && v.type !== filterType) return false;
 
-                // Optional
                 if (!showOptional) {
                     if (filterCountry === 'TW' && statusTW === 'O') return false;
                     if (filterCountry === 'SG' && statusSG === 'O') return false;
@@ -414,14 +674,12 @@
                 return true;
             }).sort((a, b) => a.month - b.month);
 
-            // Grouping
             const grouped = {};
             filtered.forEach(v => {
                 if (!grouped[v.month]) grouped[v.month] = [];
                 grouped[v.month].push(v);
             });
 
-            // Render Timeline
             const container = document.getElementById('timeline-container');
             container.innerHTML = '';
 
@@ -459,6 +717,7 @@
                 vaccines.forEach(v => {
                     const name = state.lang === 'zh' ? v.name.zh : v.name.en;
                     const desc = state.lang === 'zh' ? v.desc.zh : v.desc.en;
+                    const wikiKey = state.lang === 'zh' ? v.wiki.zh : v.wiki.en;
                     
                     const showTW = (filterCountry === 'all' || filterCountry === 'TW') && v.status.TW !== 'N';
                     const showSG = (filterCountry === 'all' || filterCountry === 'SG') && v.status.SG !== 'N';
@@ -478,14 +737,17 @@
                     }
 
                     html += `
-                        <div class="vaccine-card bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+                        <div class="vaccine-card bg-white rounded-xl p-5 shadow-sm border border-slate-200 group relative">
                             <div class="flex flex-col sm:flex-row justify-between gap-4">
-                                <div class="flex-1">
+                                <div class="flex-1 pr-8">
                                     <div class="flex flex-wrap gap-2 mb-2">
                                         ${badgesHtml}
                                     </div>
                                     <h3 class="font-bold text-lg text-slate-900">${name}</h3>
                                     <p class="text-sm text-slate-600 mt-1">${desc}</p>
+                                    <button onclick="openWiki('${wikiKey}')" class="mt-3 inline-flex items-center text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors">
+                                        <i class="fa-brands fa-wikipedia-w mr-1"></i> ${t.learnMore}
+                                    </button>
                                 </div>
                                 <div class="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2">
                                     <span class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-2 py-1 rounded">
