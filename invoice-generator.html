@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Invoice Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+  <main class="max-w-4xl mx-auto px-4 py-10">
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 md:p-8">
+      <h1 class="text-2xl font-bold mb-2">PDF Invoice Generator</h1>
+      <p class="text-sm text-slate-600 mb-6">
+        Select recipient outlet → pick a suggested supplier (or type your own) → generate random products and download PDF invoice.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label for="recipientOutlet" class="block text-sm font-semibold mb-1">Recipient Outlet</label>
+          <select id="recipientOutlet" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white"></select>
+        </div>
+
+        <div>
+          <label for="supplierName" class="block text-sm font-semibold mb-1">Supplier Name</label>
+          <input id="supplierName" list="supplierSuggestions" placeholder="Choose or type a supplier name" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white" />
+          <datalist id="supplierSuggestions"></datalist>
+        </div>
+
+        <div>
+          <label for="invoiceDate" class="block text-sm font-semibold mb-1">Invoice Date</label>
+          <input id="invoiceDate" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </div>
+
+        <div>
+          <label for="itemCount" class="block text-sm font-semibold mb-1">Random Product Count</label>
+          <input id="itemCount" type="number" min="1" max="20" value="6" class="w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button id="regenItems" class="bg-slate-700 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-lg">Regenerate Products</button>
+        <button id="downloadPdf" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg">Download PDF Invoice</button>
+      </div>
+
+      <section class="mt-8">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-lg font-semibold">Invoice Preview</h2>
+          <span id="invoiceSummary" class="text-sm text-slate-600">0 items</span>
+        </div>
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="text-left px-3 py-2">Product</th>
+                <th class="text-right px-3 py-2">Qty</th>
+                <th class="text-right px-3 py-2">Unit Price</th>
+                <th class="text-right px-3 py-2">Line Total</th>
+              </tr>
+            </thead>
+            <tbody id="itemsTableBody"></tbody>
+            <tfoot class="bg-slate-50 font-semibold">
+              <tr>
+                <td class="px-3 py-2" colspan="3">Grand Total</td>
+                <td id="grandTotal" class="text-right px-3 py-2">$0.00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const outletSuppliers = {
+      "Outlet A - Downtown": ["Atlas Foods Co.", "Northfield Traders", "Metro Wholesale Ltd."],
+      "Outlet B - Uptown": ["Harbor Supply Group", "Golden Orchard Imports", "Summit Retail Partners"],
+      "Outlet C - Riverside": ["Blue River Distribution", "Prime Pantry Logistics", "Fjord Fresh Supply"]
+    };
+
+    const productNamePool = [
+      "Almond Milk 1L", "Sparkling Water 500ml", "Organic Oats 1kg", "Brown Rice 5kg",
+      "Tomato Sauce 680g", "Olive Oil 750ml", "Canned Tuna 185g", "Pasta Spaghetti 500g",
+      "Peanut Butter 340g", "Chocolate Cookies 200g", "Ground Coffee 250g", "Green Tea Bags 50ct",
+      "Granola Bars 12pk", "Dish Soap 1L", "Paper Towels 6pk", "Hand Sanitizer 500ml"
+    ];
+
+    const recipientOutletEl = document.getElementById('recipientOutlet');
+    const supplierNameEl = document.getElementById('supplierName');
+    const supplierSuggestionsEl = document.getElementById('supplierSuggestions');
+    const invoiceDateEl = document.getElementById('invoiceDate');
+    const itemCountEl = document.getElementById('itemCount');
+    const itemsTableBodyEl = document.getElementById('itemsTableBody');
+    const invoiceSummaryEl = document.getElementById('invoiceSummary');
+    const grandTotalEl = document.getElementById('grandTotal');
+
+    let currentItems = [];
+
+    function formatCurrency(value) {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function populateOutlets() {
+      Object.keys(outletSuppliers).forEach((outlet) => {
+        const option = document.createElement('option');
+        option.value = outlet;
+        option.textContent = outlet;
+        recipientOutletEl.appendChild(option);
+      });
+      updateSupplierOptions();
+    }
+
+    function updateSupplierOptions() {
+      const currentSupplier = supplierNameEl.value.trim();
+      const selectedOutlet = recipientOutletEl.value;
+      const suppliers = outletSuppliers[selectedOutlet] || [];
+      supplierSuggestionsEl.innerHTML = '';
+      suppliers.forEach((supplier) => {
+        const option = document.createElement('option');
+        option.value = supplier;
+        supplierSuggestionsEl.appendChild(option);
+      });
+
+      if (!currentSupplier || !suppliers.includes(currentSupplier)) {
+        supplierNameEl.value = suppliers[0] || '';
+      }
+    }
+
+    function generateRandomItems() {
+      const count = Math.max(1, Math.min(20, Number(itemCountEl.value) || 1));
+      const usedNames = new Set();
+      const items = [];
+
+      while (items.length < count) {
+        const name = productNamePool[randomInt(0, productNamePool.length - 1)];
+        if (usedNames.has(name)) continue;
+        usedNames.add(name);
+
+        const quantity = randomInt(1, 15);
+        const unitPrice = Number((Math.random() * 45 + 1).toFixed(2));
+        items.push({
+          name,
+          quantity,
+          unitPrice,
+          lineTotal: Number((quantity * unitPrice).toFixed(2))
+        });
+      }
+
+      currentItems = items;
+      renderPreview();
+    }
+
+    function renderPreview() {
+      itemsTableBodyEl.innerHTML = '';
+      const total = currentItems.reduce((sum, item) => sum + item.lineTotal, 0);
+
+      currentItems.forEach((item) => {
+        const row = document.createElement('tr');
+        row.className = 'border-t border-slate-100';
+        row.innerHTML = `
+          <td class="px-3 py-2">${item.name}</td>
+          <td class="text-right px-3 py-2">${item.quantity}</td>
+          <td class="text-right px-3 py-2">${formatCurrency(item.unitPrice)}</td>
+          <td class="text-right px-3 py-2">${formatCurrency(item.lineTotal)}</td>
+        `;
+        itemsTableBodyEl.appendChild(row);
+      });
+
+      invoiceSummaryEl.textContent = `${currentItems.length} item${currentItems.length === 1 ? '' : 's'}`;
+      grandTotalEl.textContent = formatCurrency(total);
+    }
+
+    function downloadPdfInvoice() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+      const outlet = recipientOutletEl.value;
+      const supplier = supplierNameEl.value.trim() || 'Custom Supplier';
+      const invoiceDate = invoiceDateEl.value || new Date().toISOString().slice(0, 10);
+      const total = currentItems.reduce((sum, item) => sum + item.lineTotal, 0);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('INVOICE', 14, 18);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.text(`Invoice No: ${invoiceNumber}`, 14, 28);
+      doc.text(`Date: ${invoiceDate}`, 14, 34);
+      doc.text(`Recipient Outlet: ${outlet}`, 14, 40);
+      doc.text(`Supplier: ${supplier}`, 14, 46);
+
+      let y = 58;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Product', 14, y);
+      doc.text('Qty', 120, y, { align: 'right' });
+      doc.text('Unit Price', 155, y, { align: 'right' });
+      doc.text('Line Total', 196, y, { align: 'right' });
+
+      y += 4;
+      doc.line(14, y, 196, y);
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      currentItems.forEach((item) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(item.name, 14, y);
+        doc.text(String(item.quantity), 120, y, { align: 'right' });
+        doc.text(formatCurrency(item.unitPrice), 155, y, { align: 'right' });
+        doc.text(formatCurrency(item.lineTotal), 196, y, { align: 'right' });
+        y += 7;
+      });
+
+      y += 4;
+      doc.line(120, y, 196, y);
+      y += 8;
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Grand Total: ${formatCurrency(total)}`, 196, y, { align: 'right' });
+
+      doc.save(`${invoiceNumber}.pdf`);
+    }
+
+    recipientOutletEl.addEventListener('change', updateSupplierOptions);
+    document.getElementById('regenItems').addEventListener('click', generateRandomItems);
+    document.getElementById('downloadPdf').addEventListener('click', downloadPdfInvoice);
+
+    invoiceDateEl.value = new Date().toISOString().slice(0, 10);
+    populateOutlets();
+    generateRandomItems();
+  </script>
+</body>
+</html>
