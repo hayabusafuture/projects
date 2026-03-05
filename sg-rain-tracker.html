@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SG Rain Tracker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1e; color: #e2e8f0; min-height: 100vh; }
+  .header { padding: 16px 20px; background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; font-weight: 600; color: #7dd3fc; }
+  .header .subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .status-pill { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 500; }
+  .status-pill.loading { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .status-pill.safe { background: rgba(34,197,94,0.15); color: #22c55e; }
+  .status-pill.warning { background: rgba(251,146,60,0.15); color: #fb923c; }
+  .status-pill.danger { background: rgba(239,68,68,0.15); color: #ef4444; }
+  .map-container { position: relative; width: 100%; height: 55vw; max-height: 420px; min-height: 260px; background: #0d1526; overflow: hidden; }
+  canvas { width: 100%; height: 100%; }
+  .legend { position: absolute; bottom: 12px; left: 12px; background: rgba(10,15,30,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #94a3b8; }
+  .legend-item:last-child { margin-bottom: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .cards { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; }
+  .card-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .card-value { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .card-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .alert-box { margin: 0 16px 16px; border-radius: 12px; padding: 14px 16px; border: 1px solid; display: none; }
+  .alert-box.show { display: block; }
+  .alert-box.warn { background: rgba(251,146,60,0.1); border-color: rgba(251,146,60,0.3); }
+  .alert-box.danger { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }
+  .alert-box.safe { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.3); }
+  .alert-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .alert-box.warn .alert-title { color: #fb923c; }
+  .alert-box.danger .alert-title { color: #ef4444; }
+  .alert-box.safe .alert-title { color: #22c55e; }
+  .alert-body { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  .stations-list { margin: 0 16px 16px; }
+  .stations-title { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .station-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .station-name { color: #cbd5e1; font-weight: 500; }
+  .station-dist { color: #64748b; font-size: 11px; }
+  .station-rain { font-weight: 600; font-size: 13px; }
+  .rain-none { color: #475569; }
+  .rain-low { color: #22c55e; }
+  .rain-med { color: #fbbf24; }
+  .rain-high { color: #ef4444; }
+  .refresh-btn { display: block; margin: 0 16px 20px; width: calc(100% - 32px); padding: 12px; background: rgba(125,211,252,0.1); border: 1px solid rgba(125,211,252,0.25); color: #7dd3fc; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+  .refresh-btn:hover { background: rgba(125,211,252,0.18); }
+  .timestamp { text-align: center; font-size: 11px; color: #334155; padding-bottom: 20px; }
+  .error-msg { text-align: center; padding: 40px 20px; color: #64748b; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>🌧 SG Rain Tracker</h1>
+    <div class="subtitle">Real-time rain + wind analysis</div>
+  </div>
+  <div class="status-pill loading" id="statusPill">Loading…</div>
+</div>
+
+<div class="map-container">
+  <canvas id="mapCanvas"></canvas>
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#ef4444"></div> Heavy rain</div>
+    <div class="legend-item"><div class="dot" style="background:#fbbf24"></div> Light rain</div>
+    <div class="legend-item"><div class="dot" style="background:#1e293b"></div> Dry</div>
+    <div class="legend-item"><div class="dot" style="background:#a78bfa"></div> You</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Avg Wind Speed</div>
+    <div class="card-value" id="windSpeed">—</div>
+    <div class="card-sub" id="windDir">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Raining Nearby</div>
+    <div class="card-value" id="rainyCount">—</div>
+    <div class="card-sub">within 10 km</div>
+  </div>
+</div>
+
+<div class="alert-box" id="alertBox">
+  <div class="alert-title" id="alertTitle"></div>
+  <div class="alert-body" id="alertBody"></div>
+</div>
+
+<div class="stations-list">
+  <div class="stations-title">Nearest Stations</div>
+  <div id="stationsList"><div class="error-msg">Fetching data…</div></div>
+</div>
+
+<button class="refresh-btn" onclick="loadAll()">↻ Refresh Data</button>
+<div class="timestamp" id="timestamp"></div>
+
+<script>
+const SG = { minLat: 1.1, maxLat: 1.48, minLng: 103.6, maxLng: 104.05 };
+let userLat = null, userLng = null;
+let allStations = {};
+let windData = { speed: null, dir: null, dirDeg: null };
+
+function latToY(lat, h) { return h - ((lat - SG.minLat) / (SG.maxLat - SG.minLat)) * h; }
+function lngToX(lng, w) { return ((lng - SG.minLng) / (SG.maxLng - SG.minLng)) * w; }
+function degToCompass(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function drawMap() {
+  const canvas = document.getElementById('mapCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const W = rect.width, H = rect.height;
+
+  ctx.fillStyle = '#0d1526'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+  for(let i=0;i<=10;i++){
+    const x=(i/10)*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+    const y=(i/10)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  Object.values(allStations).forEach(s => {
+    const x = lngToX(s.lng, W), y = latToY(s.lat, H);
+    if(windData.dirDeg !== null && windData.speed > 0.5) {
+      const len = Math.min(18, windData.speed * 2);
+      const rad = (windData.dirDeg + 180) * Math.PI / 180;
+      ctx.strokeStyle = 'rgba(125,211,252,0.28)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.sin(rad)*len, y-Math.cos(rad)*len); ctx.stroke();
+      const ax = x+Math.sin(rad)*len, ay = y-Math.cos(rad)*len;
+      ctx.fillStyle = 'rgba(125,211,252,0.4)';
+      ctx.beginPath(); ctx.moveTo(ax,ay);
+      ctx.lineTo(ax+Math.sin(rad-2.5)*4, ay-Math.cos(rad-2.5)*4);
+      ctx.lineTo(ax+Math.sin(rad+2.5)*4, ay-Math.cos(rad+2.5)*4);
+      ctx.closePath(); ctx.fill();
+    }
+    const r = s.rain > 5 ? 8 : s.rain > 0 ? 6 : 4;
+    const color = s.rain > 5 ? '#ef4444' : s.rain > 0 ? '#fbbf24' : '#1e293b';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill();
+    if(s.rain > 0) {
+      ctx.beginPath(); ctx.arc(x, y, r+4, 0, Math.PI*2);
+      ctx.strokeStyle = color+'44'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  });
+
+  if(userLat && userLng) {
+    const x = lngToX(userLng, W), y = latToY(userLat, H);
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI*2); ctx.strokeStyle='rgba(167,139,250,0.3)'; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.fillStyle='#a78bfa'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+  }
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url); if(!res.ok) throw new Error('HTTP '+res.status); return res.json();
+}
+
+async function loadAll() {
+  document.getElementById('statusPill').className='status-pill loading';
+  document.getElementById('statusPill').textContent='Loading…';
+  try {
+    if(!userLat) {
+      await new Promise(resolve => {
+        navigator.geolocation.getCurrentPosition(
+          pos => { userLat=pos.coords.latitude; userLng=pos.coords.longitude; resolve(); },
+          () => { userLat=1.2842; userLng=103.8507; resolve(); },
+          {timeout:8000}
+        );
+      });
+    }
+
+    const [rainData, windSpeedData, windDirData] = await Promise.all([
+      fetchJSON('https://api-open.data.gov.sg/v2/real-time/api/rainfall'),
+      fetchJSON('https://api-open.data.gov.sg/v2/real-time/api/wind-speed'),
+      fetchJSON('https://api-open.data.gov.sg/v2/real-time/api/wind-direction')
+    ]);
+
+    allStations = {};
+    (rainData?.data?.stations||[]).forEach(st => {
+      allStations[st.id]={id:st.id,name:st.name,lat:st.location.latitude,lng:st.location.longitude,rain:0};
+    });
+    (rainData?.data?.readings?.[0]?.data||[]).forEach(r => {
+      if(allStations[r.stationId]) allStations[r.stationId].rain = r.value||0;
+    });
+
+    const wsR = windSpeedData?.data?.readings?.[0]?.data||[];
+    windData.speed = wsR.length ? wsR.reduce((s,r)=>s+r.value,0)/wsR.length : null;
+
+    const wdR = windDirData?.data?.readings?.[0]?.data||[];
+    if(wdR.length) {
+      let sinSum=0,cosSum=0;
+      wdR.forEach(r=>{sinSum+=Math.sin(r.value*Math.PI/180);cosSum+=Math.cos(r.value*Math.PI/180);});
+      windData.dirDeg=(Math.atan2(sinSum/wdR.length,cosSum/wdR.length)*180/Math.PI+360)%360;
+      windData.dir=degToCompass(windData.dirDeg);
+    }
+
+    document.getElementById('windSpeed').textContent=windData.speed!==null?windData.speed.toFixed(1)+' km/h':'—';
+    document.getElementById('windDir').textContent=windData.dir?`From ${windData.dir} (${Math.round(windData.dirDeg)}°)`:'—';
+
+    const stations=Object.values(allStations).map(s=>({...s,dist:haversine(userLat,userLng,s.lat,s.lng)})).sort((a,b)=>a.dist-b.dist);
+    document.getElementById('rainyCount').textContent=stations.filter(s=>s.dist<=10&&s.rain>0).length;
+
+    analyzeApproach(); renderStations(stations.slice(0,8)); drawMap();
+    document.getElementById('timestamp').textContent='Last updated: '+new Date().toLocaleTimeString('en-SG');
+  } catch(e) {
+    console.error(e);
+    document.getElementById('statusPill').className='status-pill warning';
+    document.getElementById('statusPill').textContent='Error';
+    document.getElementById('stationsList').innerHTML='<div class="error-msg">Failed to load data.<br><small>'+e.message+'</small></div>';
+  }
+}
+
+function analyzeApproach() {
+  if(!windData.dirDeg) {
+    setAlert('safe','✓ No wind data','Cannot determine rain approach direction.');
+    setPill('safe','No Wind Data'); return;
+  }
+  const upwind=[];
+  Object.values(allStations).forEach(s=>{
+    if(s.rain<=0) return;
+    const dist=haversine(userLat,userLng,s.lat,s.lng);
+    if(dist>15) return;
+    const dLng=(s.lng-userLng)*Math.PI/180;
+    const bearingRad=Math.atan2(
+      Math.sin(dLng)*Math.cos(s.lat*Math.PI/180),
+      Math.cos(userLat*Math.PI/180)*Math.sin(s.lat*Math.PI/180)-Math.sin(userLat*Math.PI/180)*Math.cos(s.lat*Math.PI/180)*Math.cos(dLng)
+    );
+    const windFromRad=windData.dirDeg*Math.PI/180;
+    let diff=Math.abs(bearingRad-windFromRad)*180/Math.PI;
+    if(diff>180) diff=360-diff;
+    if(diff<60) upwind.push({...s,dist,eta:windData.speed>1?Math.round((dist/windData.speed)*60):null});
+  });
+
+  if(upwind.length===0) {
+    const anyNear=Object.values(allStations).filter(s=>haversine(userLat,userLng,s.lat,s.lng)<=10&&s.rain>0);
+    if(anyNear.length===0) { setAlert('safe','✓ All clear','No rain within 15 km. Looking good!'); setPill('safe','Clear'); }
+    else { setAlert('warn','⚠ Rain nearby, not approaching',`Rain detected but wind from ${windData.dir} is carrying it away.`); setPill('warning','Nearby'); }
+  } else {
+    upwind.sort((a,b)=>a.dist-b.dist);
+    const c=upwind[0];
+    const eta=c.eta!==null?`~${c.eta} min ETA`:'wind too light for ETA';
+    setAlert('danger','🌧 Rain approaching!',`${upwind.length} upwind station(s) raining. Closest: ${c.name} (${c.dist.toFixed(1)} km, ${eta}). Wind from ${windData.dir} at ${windData.speed?.toFixed(1)} km/h.`);
+    setPill('danger','Rain Coming!');
+  }
+}
+
+function setPill(type, text) {
+  document.getElementById('statusPill').className='status-pill '+type;
+  document.getElementById('statusPill').textContent=text;
+}
+function setAlert(type,title,body) {
+  const box=document.getElementById('alertBox');
+  box.className='alert-box show '+(type==='safe'?'safe':type==='warn'?'warn':'danger');
+  document.getElementById('alertTitle').textContent=title;
+  document.getElementById('alertBody').textContent=body;
+}
+function renderStations(stations) {
+  document.getElementById('stationsList').innerHTML=stations.map(s=>{
+    const rc=s.rain===0?'rain-none':s.rain<1?'rain-low':s.rain<5?'rain-med':'rain-high';
+    return `<div class="station-row"><div><div class="station-name">${s.name}</div><div class="station-dist">${s.dist.toFixed(1)} km away</div></div><div class="station-rain ${rc}">${s.rain===0?'Dry':s.rain.toFixed(1)+' mm'}</div></div>`;
+  }).join('');
+}
+
+loadAll();
+setInterval(loadAll, 5*60*1000);
+</script>
+</body>
+</html>
