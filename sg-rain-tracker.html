@@ -221,6 +221,7 @@ async function loadAll() {
     document.getElementById('statusPill').className='status-pill warning';
     document.getElementById('statusPill').textContent='Error';
     document.getElementById('stationsList').innerHTML='<div class="error-msg">Failed to load data.<br><small>'+e.message+'</small></div>';
+    drawMap();
   }
 }
 
@@ -275,6 +276,8 @@ function renderStations(stations) {
   }).join('');
 }
 
+window.addEventListener('resize', drawMap);
+requestAnimationFrame(drawMap);
 loadAll();
 setInterval(loadAll, 5*60*1000);
 </script>
